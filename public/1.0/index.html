@@ -156,85 +156,102 @@
        * parent container's width while maintaining a fixed height.
        */
       function SimpleLineChart({ data, currentAcos }) {
-        // Chart dimensions. Height is fixed; width is 100% of the container via viewBox.
-        const height = 200;
-        const margin = 40;
-        // Extract y values (percentage) and include current reference value
+        /*
+         * A responsive line chart drawn in pure SVG. The chart reserves
+         * margins for axis labels so that text doesn’t overlap the plot.
+         * Coordinates are normalised to a 0–1 range; margins carve out
+         * space on the left and bottom. The y‑domain spans the data and
+         * current reference value. Axis ticks are computed dynamically.
+         */
+        const heightPx = 220; // fixed pixel height; width is driven by container
+        // Margins expressed as fractions of the total width/height
+        const leftMargin = 0.12;
+        const rightMargin = 0.03;
+        const bottomMargin = 0.18;
+        const topMargin = 0.05;
+        // Build y-domain using all data points and the current reference
         const ys = data.map((p) => p.acosPct);
-        const refValue = (currentAcos || 0) * 100;
-        const yMin = Math.min(...ys, refValue);
-        const yMax = Math.max(...ys, refValue);
-        // Avoid zero range which would break scaling
-        const range = yMax - yMin || 1;
-        // Build the polyline points for the line path. x positions are spread evenly.
-        const points = data.map((p, i) => {
-          const x = i / (data.length - 1);
-          const y = 1 - (p.acosPct - yMin) / range;
-          return `${x},${y}`;
-        });
-        // Compute y coordinate for the reference (current) line
-        const refY = 1 - (refValue - yMin) / range;
-        // Generate tick marks and labels on the y-axis at 4 intervals
+        const refVal = (currentAcos || 0) * 100;
+        let yMin = Math.min(...ys, refVal);
+        let yMax = Math.max(...ys, refVal);
+        if (yMin === yMax) {
+          yMin = yMin - 1;
+          yMax = yMax + 1;
+        }
+        const yRange = yMax - yMin;
+        // Map a data index to x (0–1) taking margins into account
+        const xForIndex = (i) =>
+          leftMargin + (i / (data.length - 1)) * (1 - leftMargin - rightMargin);
+        // Map a y value to normalised coordinate (0 at top, 1 at bottom) within the chart area
+        const yForValue = (val) =>
+          topMargin + (1 - (val - yMin) / yRange) * (1 - topMargin - bottomMargin);
+        // Construct polyline path string
+        const pointsStr = data
+          .map((p, i) => `${xForIndex(i)},${yForValue(p.acosPct)}`)
+          .join(' ');
+        // Reference line position
+        const refY = yForValue(refVal);
+        // Generate y ticks (5 ticks including min/max)
+        const yTicks = [];
         const tickCount = 4;
-        const ticks = [];
         for (let i = 0; i <= tickCount; i++) {
-          const t = i / tickCount;
-          const yVal = yMax - (range * t);
-          ticks.push({ position: t, label: `${yVal.toFixed(0)}%` });
+          const value = yMax - (yRange * i) / tickCount;
+          const y = topMargin + (i / tickCount) * (1 - topMargin - bottomMargin);
+          yTicks.push({ y, value });
         }
         return (
           <svg
-            viewBox={`0 0 1 1`}
+            viewBox="0 0 1 1"
             preserveAspectRatio="none"
             className="w-full"
-            style={{ height: `${height}px` }}
+            style={{ height: `${heightPx}px` }}
           >
-            {/* Horizontal grid lines and y-axis labels */}
-            {ticks.map((tick, idx) => (
+            {/* Horizontal grid lines and y‑axis labels */}
+            {yTicks.map((tick, idx) => (
               <g key={idx}>
                 <line
-                  x1={0}
-                  y1={tick.position}
-                  x2={1}
-                  y2={tick.position}
+                  x1={leftMargin}
+                  y1={tick.y}
+                  x2={1 - rightMargin}
+                  y2={tick.y}
                   stroke="#e5e7eb"
-                  strokeWidth="0.002"
+                  strokeWidth="0.0025"
                 />
                 <text
-                  x={0}
-                  y={tick.position - 0.005}
-                  fontSize="0.03"
+                  x={leftMargin - 0.02}
+                  y={tick.y + 0.01}
+                  fontSize="0.028"
                   fill="#6b7280"
-                  textAnchor="start"
+                  textAnchor="end"
                 >
-                  {tick.label}
+                  {tick.value.toFixed(0)}%
                 </text>
               </g>
             ))}
             {/* Reference line for current ACoS */}
             <line
-              x1={0}
+              x1={leftMargin}
               y1={refY}
-              x2={1}
+              x2={1 - rightMargin}
               y2={refY}
               stroke="#ff4d4f"
-              strokeWidth="0.002"
+              strokeWidth="0.003"
               strokeDasharray="0.01 0.01"
             />
-            {/* Line path connecting data points */}
+            {/* Data line */}
             <polyline
               fill="none"
-              stroke="#007aff"
-              strokeWidth="0.005"
-              points={points.join(' ')}
+              stroke="#0066cc"
+              strokeWidth="0.0045"
+              points={pointsStr}
             />
-            {/* X-axis labels */}
+            {/* X‑axis labels */}
             {data.map((p, i) => (
               <text
                 key={i}
-                x={i / (data.length - 1)}
-                y={1.05}
-                fontSize="0.03"
+                x={xForIndex(i)}
+                y={1 - bottomMargin + 0.05}
+                fontSize="0.028"
                 fill="#6b7280"
                 textAnchor="middle"
               >
