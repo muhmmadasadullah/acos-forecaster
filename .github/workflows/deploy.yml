@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages
+name: Deploy React App to GitHub Pages
 
 on:
   push:
@@ -6,16 +6,10 @@ on:
       - main
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
+  contents: write
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -24,9 +18,8 @@ jobs:
           node-version: 18
       - run: npm install
       - run: npm run build
-      - uses: actions/upload-pages-artifact@v1
+      - name: Deploy
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          path: ./build
-      - uses: actions/deploy-pages@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build
