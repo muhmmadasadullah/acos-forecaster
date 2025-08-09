@@ -1,189 +1,396 @@
-<!DOCTYPE html>
+<!--
+  ACoS Forecaster static site (v1.0)
+
+  This standalone HTML file implements the Amazon PPC ACoS forecasting tool using
+  React and Recharts. All dependencies are pulled from public CDNs, so no
+  bundler is required. The app lets users enter current advertising metrics and
+  experiment with new CPC (cost per click) and CVR (conversion rate) values
+  to see how those changes impact ACoS, estimated spend, orders and sales. A
+  sensitivity chart illustrates how varying CVR values change ACoS at a fixed
+  CPC.
+
+  To host this file on GitHub Pages under a sub‑path (e.g. /acos‑forecaster/1.0/),
+  simply place it at that directory within your repository. For example,
+  committing this file as `1.0/index.html` in the `acos‑forecaster` repository
+  will make it available at:
+
+    https://USERNAME.github.io/acos-forecaster/1.0/
+
+  Replace USERNAME with your GitHub username. No additional build steps are
+  necessary.
+-->
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ACoS Forecaster Pro</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
-</head>
-<body class="bg-white text-gray-900">
-  <div id="root"></div>
-  <script type="text/babel">
-    const { useState, useMemo } = React;
-    const { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine, CartesianGrid } = Recharts;
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ACoS Forecaster</title>
+    <!-- Tailwind CSS via CDN for styling. Using a CDN avoids the need for a build step. -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React and ReactDOM UMD builds -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <!-- Babel for in-browser JSX transformation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Recharts UMD build for charts -->
+    <script src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
+    <!-- Basic styling for cards and KPI badges -->
+    <style>
+      /* Accent gradient used in the header badge */
+      .accent {
+        background: linear-gradient(135deg, #1428A0, #00B5F1);
+      }
+    </style>
+  </head>
+  <body class="bg-white text-neutral-900">
+    <div id="root"></div>
+    <script type="text/babel">
+      const { useState, useMemo } = React;
+      // Pull Recharts components from the global Recharts object. When Recharts
+      // fails to load, these will be undefined and charts will not render.
+      const {
+        ResponsiveContainer,
+        LineChart,
+        Line,
+        XAxis,
+        YAxis,
+        Tooltip,
+        ReferenceLine,
+      } = window.Recharts || {};
 
-    function InputField({ label, value, onChange }) {
-      return (
-        <label className="block mb-3">
-          <span className="block text-sm text-gray-600 mb-1">{label}</span>
-          <input
-            className="w-full rounded-lg border border-gray-300 px-3 py-2"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-          />
-        </label>
-      );
-    }
+      /**
+       * Card component renders a titled section with optional subtitle.
+       */
+      function Card({ title, subtitle, children }) {
+        return (
+          <div className="rounded-2xl border border-neutral-100 bg-white shadow-sm p-5">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              {/* Blue dot to mimic a subtle icon */}
+              <span className="h-4 w-4 rounded-full bg-blue-600"></span>
+              {title}
+            </h3>
+            {subtitle && (
+              <p className="mt-1 text-sm text-neutral-500">{subtitle}</p>
+            )}
+            <div className="mt-4">{children}</div>
+          </div>
+        );
+      }
 
-    function MetricRow({ label, value, highlight }) {
-      return (
-        <div className="flex justify-between items-center py-2">
-          <span className="text-sm text-gray-600">{label}</span>
-          <span
-            className={
-              "px-3 py-1 rounded-lg " +
-              (highlight ? "bg-red-50 text-red-600" : "bg-gray-100 text-gray-800")
-            }
-          >
-            {value}
-          </span>
-        </div>
-      );
-    }
+      /**
+       * Simple input field with label. All input fields in the app use this
+       * component. Values are controlled by parent state via the onChange
+       * callback.
+       */
+      function InputField({ label, value, onChange }) {
+        return (
+          <label className="block mb-3">
+            <span className="block text-sm text-neutral-600 mb-1">{label}</span>
+            <input
+              className="w-full rounded-xl border border-neutral-200 px-3 py-2"
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+            />
+          </label>
+        );
+      }
 
-    function MiniKPI({ label, value }) {
-      return (
-        <div className="rounded-lg border border-gray-200 bg-gray-50 p-2 text-center">
-          <div className="text-xs uppercase tracking-wide text-gray-500">{label}</div>
-          <div className="font-medium">{value}</div>
-        </div>
-      );
-    }
+      /**
+       * Component for the two forecast input fields (CPC and CVR). Separated
+       * into its own component for clarity. These fields accept string values
+       * because the surrounding app handles conversion to numbers.
+       */
+      function TargetInputs({ newCpc, setNewCpc, newCvrPct, setNewCvrPct }) {
+        return (
+          <>
+            <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+              {/* Another subtle dot for the section */}
+              <span className="h-3 w-3 rounded-full bg-blue-500"></span>
+              Forecast Inputs
+            </h4>
+            <InputField
+              label="New CPC ($)"
+              value={newCpc}
+              onChange={setNewCpc}
+            />
+            <InputField
+              label="New CVR (%)"
+              value={newCvrPct}
+              onChange={setNewCvrPct}
+            />
+          </>
+        );
+      }
 
-    function App() {
-      const [adSpend, setAdSpend] = useState("300");
-      const [adSales, setAdSales] = useState("1000");
-      const [adClicks, setAdClicks] = useState("500");
-      const [adOrders, setAdOrders] = useState("50");
-      const [newCpc, setNewCpc] = useState("0.60");
-      const [newCvrPct, setNewCvrPct] = useState("12");
-
-      const toNum = (v) => parseFloat(v.replace(/,/g, "")) || 0;
-      const safeDiv = (num, den) => (den > 0 ? num / den : 0);
-
-      const current = useMemo(() => {
-        const spend = toNum(adSpend);
-        const sales = toNum(adSales);
-        const clicks = toNum(adClicks);
-        const orders = toNum(adOrders);
-        return {
-          spend,
-          sales,
-          clicks,
-          orders,
-          acos: safeDiv(spend, sales),
-          cpc: safeDiv(spend, clicks),
-          cvr: safeDiv(orders, clicks),
-          aov: safeDiv(sales, orders),
-        };
-      }, [adSpend, adSales, adClicks, adOrders]);
-
-      const forecast = useMemo(() => {
-        const cpc = toNum(newCpc);
-        const cvr = toNum(newCvrPct) / 100;
-        const clicks = current.clicks || 0;
-        const estOrders = clicks * cvr;
-        const estSpend = clicks * cpc;
-        const estSales = estOrders * current.aov;
-        const newAcos = safeDiv(estSpend, estSales);
-        const delta = newAcos - current.acos;
-        return { cpc, cvr, clicks, estOrders, estSpend, estSales, newAcos, delta };
-      }, [newCpc, newCvrPct, current]);
-
-      const fmtPct = (v) => (v * 100).toFixed(2) + "%";
-      const fmtMoney = (v) => "$" + v.toFixed(2);
-      const fmtUnit = (v) => Math.round(v).toString();
-
-      const chartData = useMemo(() => {
-        const points = [];
-        const clicks = current.clicks || 0;
-        const aov = current.aov || 0;
-        const cpc = toNum(newCpc);
-        for (let pct = 2; pct <= 30; pct += 2) {
-          const cvr = pct / 100;
-          const orders = clicks * cvr;
-          const spend = clicks * cpc;
-          const sales = orders * aov;
-          const acos = safeDiv(spend, sales) * 100;
-          points.push({ name: pct + "%", value: isFinite(acos) ? acos : 0 });
-        }
-        return points;
-      }, [current, newCpc]);
-
-      return (
-        <div className="min-h-screen flex flex-col">
-          <header className="py-4 border-b border-gray-200 text-center">
-            <h1 className="text-2xl font-bold">ACoS Forecaster</h1>
-          </header>
-          <main className="flex-1 container mx-auto p-4 grid md:grid-cols-3 gap-6">
-            <section>
-              <h2 className="text-lg font-semibold mb-2">Inputs</h2>
-              <InputField label="Ad Spend ($)" value={adSpend} onChange={setAdSpend} />
-              <InputField label="Ad Sales ($)" value={adSales} onChange={setAdSales} />
-              <InputField label="Ad Clicks" value={adClicks} onChange={setAdClicks} />
-              <InputField label="Ad Orders" value={adOrders} onChange={setAdOrders} />
-              <h3 className="text-md font-medium mt-4 mb-2">Forecast Inputs</h3>
-              <InputField label="New CPC ($)" value={newCpc} onChange={setNewCpc} />
-              <InputField label="New CVR (%)" value={newCvrPct} onChange={setNewCvrPct} />
-            </section>
-            <section>
-              <h2 className="text-lg font-semibold mb-2">Current Metrics</h2>
-              <MetricRow label="ACoS" value={fmtPct(current.acos)} highlight={false} />
-              <MetricRow label="Avg CPC" value={fmtMoney(current.cpc)} />
-              <MetricRow label="Ad CVR" value={fmtPct(current.cvr)} />
-              <MetricRow label="AOV" value={fmtMoney(current.aov)} />
-            </section>
-            <section>
-              <h2 className="text-lg font-semibold mb-2">Forecast</h2>
-              <MetricRow label="New ACoS" value={fmtPct(forecast.newAcos)} highlight={true} />
-              <p className="text-sm mt-1 mb-2">
-                Change: {(forecast.delta * 100).toFixed(2)}% (negative means improvement).
-              </p>
-              <div className="grid grid-cols-3 gap-2 text-sm">
-                <MiniKPI label="Est. Spend" value={fmtMoney(forecast.estSpend)} />
-                <MiniKPI label="Est. Orders" value={fmtUnit(forecast.estOrders)} />
-                <MiniKPI label="Est. Sales" value={fmtMoney(forecast.estSales)} />
-              </div>
-            </section>
-          </main>
-          <section className="container mx-auto px-4 pb-8">
-            <h2 className="text-lg font-semibold mb-2">Sensitivity: ACoS vs CVR</h2>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis tickFormatter={(v) => v.toFixed(0) + '%'} />
-                  <Tooltip formatter={(v) => v.toFixed(2) + '%'} />
-                  <ReferenceLine y={(current.acos || 0) * 100} stroke="#f00" strokeDasharray="3 3" />
-                  <Line type="monotone" dataKey="value" stroke="#007aff" strokeWidth={3} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            <p className="mt-2 text-xs text-gray-500">
-              The dotted line shows your current ACoS. Increasing CVR or reducing CPC will lower ACoS.
-            </p>
-          </section>
-          <footer className="border-t border-gray-200 py-4 text-center">
-            Made by Asadullah. Connect on 
-            <a
-              href="https://www.linkedin.com/in/muhamadasadullah/"
-              className="text-blue-600 hover:underline"
-              target="_blank"
-              rel="noopener noreferrer"
+      /**
+       * Row showing a single metric label/value pair. An optional 'big'
+       * boolean toggles a larger font size for the value (used for New ACoS).
+       */
+      function MetricRow({ label, value, big = false }) {
+        return (
+          <div className="flex items-center justify-between py-2.5">
+            <span className="text-sm text-neutral-600">{label}</span>
+            <span
+              className={`px-2.5 py-1 font-medium rounded-lg bg-red-50 text-red-600 ${big ? 'text-base' : 'text-sm'}`}
             >
-              LinkedIn
-            </a>
-          </footer>
-        </div>
-      );
-    }
+              {value}
+            </span>
+          </div>
+        );
+      }
 
-    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-  </script>
-</body>
+      /**
+       * Mini KPI card used in the Forecast section to show estimated spend,
+       * orders, sales, ROAS, CPA, and profit.
+       */
+      function MiniKPI({ label, value }) {
+        return (
+          <div className="rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-wide text-neutral-500">
+              {label}
+            </div>
+            <div className="text-sm font-semibold">{value}</div>
+          </div>
+        );
+      }
+
+      /**
+       * Top level application component. Contains all state and logic for the
+       * forecasting model along with the UI layout. State values are stored
+       * as strings to preserve the exact input text; conversions to numeric
+       * values happen via helper functions when performing calculations.
+       */
+      function App() {
+        // Input state: current advertising metrics
+        const [adSpend, setAdSpend] = useState('300');
+        const [adSales, setAdSales] = useState('1000');
+        const [adClicks, setAdClicks] = useState('500');
+        const [adOrders, setAdOrders] = useState('50');
+        // Forecast input state: new CPC and CVR
+        const [newCpc, setNewCpc] = useState('0.60');
+        const [newCvrPct, setNewCvrPct] = useState('12');
+
+        // Helpers to safely convert strings to numbers. toNum removes
+        // thousands separators and returns 0 for invalid input. safeDiv
+        // prevents divide‑by‑zero errors.
+        const toNum = (v) => {
+          const n = parseFloat((v ?? '').toString().replace(/,/g, ''));
+          return isNaN(n) ? 0 : n;
+        };
+        const safeDiv = (num, den) => (den > 0 ? num / den : 0);
+
+        // Compute current metrics based on input fields. useMemo ensures
+        // calculations only run when dependencies change. ACoS, CPC,
+        // conversion rate and average order value (AOV) are derived here.
+        const current = useMemo(() => {
+          const spend = toNum(adSpend);
+          const sales = toNum(adSales);
+          const clicks = toNum(adClicks);
+          const orders = toNum(adOrders);
+          return {
+            spend,
+            sales,
+            clicks,
+            orders,
+            acos: safeDiv(spend, sales),
+            cpc: safeDiv(spend, clicks),
+            cvr: safeDiv(orders, clicks),
+            aov: safeDiv(sales, orders),
+          };
+        }, [adSpend, adSales, adClicks, adOrders]);
+
+        // Forecast metrics computed from the new CPC and CVR values. The
+        // existing click volume is used for the forecast to simulate only
+        // efficiency changes (not volume changes). The delta shows the
+        // difference between forecast ACoS and current ACoS.
+        const forecast = useMemo(() => {
+          const cpc = toNum(newCpc);
+          const cvr = toNum(newCvrPct) / 100;
+          const clicks = current.clicks;
+          const estOrders = clicks * cvr;
+          const estSpend = clicks * cpc;
+          const estSales = estOrders * (current.aov || 0);
+          const newAcos = safeDiv(estSpend, estSales);
+          const delta = newAcos - current.acos;
+          return {
+            cpc,
+            cvr,
+            clicks,
+            estOrders,
+            estSpend,
+            estSales,
+            newAcos,
+            delta,
+          };
+        }, [newCpc, newCvrPct, current]);
+
+        // Generate chart data for ACoS vs CVR. The CPC used is the
+        // forecasted new CPC. For each CVR from 2% to 30% in 2% increments we
+        // compute the resulting ACoS. Multiplying by 100 yields a percentage.
+        const chartData = useMemo(() => {
+          const points = [];
+          const clicks = Math.max(1, current.clicks || 0);
+          const aov = current.aov || 0;
+          const cpc = toNum(newCpc);
+          for (let pct = 2; pct <= 30; pct += 2) {
+            const cvr = pct / 100;
+            const orders = clicks * cvr;
+            const spend = clicks * cpc;
+            const sales = orders * aov;
+            const acos = safeDiv(spend, sales) * 100;
+            points.push({ name: `${pct}%`, acosPct: isFinite(acos) ? acos : 0 });
+          }
+          return points;
+        }, [current.clicks, current.aov, newCpc]);
+
+        // Format helper functions for display
+        const fmtPct = (v) => `${(v * 100).toFixed(2)}%`;
+        const fmtMoney = (v) => `$${v.toFixed(2)}`;
+        const fmtUnit = (v) => `${Math.round(v)}`;
+
+        return (
+          <div className="min-h-screen flex flex-col">
+            {/* Header with logo and title */}
+            <header className="sticky top-0 z-20 bg-white/80 backdrop-blur border-b border-neutral-100">
+              <div className="mx-auto max-w-6xl px-4 py-4 flex items-center justify-center">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl accent"></div>
+                  <h1 className="text-2xl font-bold tracking-tight">
+                    ACoS Forecaster
+                  </h1>
+                </div>
+              </div>
+            </header>
+
+            {/* Main content grid */}
+            <main className="flex-1 mx-auto max-w-6xl px-4 py-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Inputs */}
+              <section className="lg:col-span-1">
+                <Card
+                  title="Inputs"
+                  subtitle="Enter your current ad metrics and forecast inputs"
+                >
+                  <InputField
+                    label="Ad Spend ($)"
+                    value={adSpend}
+                    onChange={setAdSpend}
+                  />
+                  <InputField
+                    label="Ad Sales ($)"
+                    value={adSales}
+                    onChange={setAdSales}
+                  />
+                  <InputField
+                    label="Ad Clicks"
+                    value={adClicks}
+                    onChange={setAdClicks}
+                  />
+                  <InputField
+                    label="Ad Orders"
+                    value={adOrders}
+                    onChange={setAdOrders}
+                  />
+                  <TargetInputs
+                    newCpc={newCpc}
+                    setNewCpc={setNewCpc}
+                    newCvrPct={newCvrPct}
+                    setNewCvrPct={setNewCvrPct}
+                  />
+                </Card>
+              </section>
+
+              {/* Current metrics */}
+              <section className="lg:col-span-1">
+                <Card title="Current Metrics" subtitle="Calculated from inputs">
+                  <MetricRow label="ACoS" value={fmtPct(current.acos)} />
+                  <MetricRow label="Avg CPC" value={fmtMoney(current.cpc)} />
+                  <MetricRow label="Ad CVR" value={fmtPct(current.cvr)} />
+                  <MetricRow label="Ad AOV" value={fmtMoney(current.aov)} />
+                </Card>
+              </section>
+
+              {/* Forecast */}
+              <section className="lg:col-span-1">
+                <Card title="Forecast" subtitle="Impact from New CPC & CVR">
+                  <MetricRow
+                    label="New ACoS"
+                    value={fmtPct(forecast.newAcos)}
+                    big
+                  />
+                  <p className="text-sm mt-2">
+                    Change: {(forecast.delta * 100).toFixed(2)}% — negative is
+                    improvement (lower ACoS).
+                  </p>
+                  <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
+                    <MiniKPI label="Est. Spend" value={fmtMoney(forecast.estSpend)} />
+                    <MiniKPI label="Est. Orders" value={fmtUnit(forecast.estOrders)} />
+                    <MiniKPI label="Est. Sales" value={fmtMoney(forecast.estSales)} />
+                  </div>
+                  <div className="mt-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-xs text-neutral-700 leading-relaxed">
+                    <strong>Detailed logic:</strong>
+                    <ul className="list-disc pl-5 mt-1 space-y-1">
+                      <li>Current clicks remain constant</li>
+                      <li>Est. Spend = Clicks × New CPC</li>
+                      <li>Est. Orders = Clicks × New CVR</li>
+                      <li>Est. Sales = Est. Orders × Current AOV</li>
+                      <li>New ACoS = Est. Spend ÷ Est. Sales</li>
+                    </ul>
+                  </div>
+                </Card>
+              </section>
+
+              {/* Chart */}
+              <section className="lg:col-span-3">
+                <Card
+                  title="Sensitivity: ACoS vs CVR"
+                  subtitle="CPC & AOV held at forecast values"
+                >
+                  {window.Recharts ? (
+                    <div className="h-64 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={chartData} margin={{ top: 10, right: 20, bottom: 0, left: 0 }}>
+                          <XAxis dataKey="name" />
+                          <YAxis unit="%" />
+                          <Tooltip formatter={(v) => `${Number(v).toFixed(2)}%`} />
+                          <ReferenceLine y={(current.acos || 0) * 100} strokeDasharray="3 3" stroke="#ff4d4f" />
+                          <Line type="monotone" dataKey="acosPct" strokeWidth={3} stroke="#007aff" dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <p className="p-4 text-sm text-center text-neutral-500">
+                      Charts couldn’t be loaded. Please check your internet connection and reload.
+                    </p>
+                  )}
+                  <p className="mt-3 text-xs text-neutral-500">
+                    Tip: Increasing CVR or lowering CPC will bring ACoS down. The
+                    dotted line marks your current ACoS.
+                  </p>
+                </Card>
+              </section>
+            </main>
+
+            {/* Footer */}
+            <footer className="border-t border-neutral-100 py-6">
+              <div className="mx-auto max-w-6xl text-center">
+                <p className="font-medium text-neutral-900">
+                  Made by Asadullah. Connect on{' '}
+                  <a
+                    href="https://www.linkedin.com/in/muhamadasadullah/"
+                    target="_blank"
+                    className="text-blue-600 hover:underline"
+                    >
+                    LinkedIn
+                  </a>
+                </p>
+              </div>
+            </footer>
+          </div>
+        );
+      }
+
+      // Render the app into the #root element
+      ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+  </body>
 </html>
