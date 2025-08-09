@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ACoS Forecaster Pro</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
+</head>
+<body class="bg-white text-gray-900">
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useMemo } = React;
+    const { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine, CartesianGrid } = Recharts;
+
+    function InputField({ label, value, onChange }) {
+      return (
+        <label className="block mb-3">
+          <span className="block text-sm text-gray-600 mb-1">{label}</span>
+          <input
+            className="w-full rounded-lg border border-gray-300 px-3 py-2"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+          />
+        </label>
+      );
+    }
+
+    function MetricRow({ label, value, highlight }) {
+      return (
+        <div className="flex justify-between items-center py-2">
+          <span className="text-sm text-gray-600">{label}</span>
+          <span
+            className={
+              "px-3 py-1 rounded-lg " +
+              (highlight ? "bg-red-50 text-red-600" : "bg-gray-100 text-gray-800")
+            }
+          >
+            {value}
+          </span>
+        </div>
+      );
+    }
+
+    function MiniKPI({ label, value }) {
+      return (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-2 text-center">
+          <div className="text-xs uppercase tracking-wide text-gray-500">{label}</div>
+          <div className="font-medium">{value}</div>
+        </div>
+      );
+    }
+
+    function App() {
+      const [adSpend, setAdSpend] = useState("300");
+      const [adSales, setAdSales] = useState("1000");
+      const [adClicks, setAdClicks] = useState("500");
+      const [adOrders, setAdOrders] = useState("50");
+      const [newCpc, setNewCpc] = useState("0.60");
+      const [newCvrPct, setNewCvrPct] = useState("12");
+
+      const toNum = (v) => parseFloat(v.replace(/,/g, "")) || 0;
+      const safeDiv = (num, den) => (den > 0 ? num / den : 0);
+
+      const current = useMemo(() => {
+        const spend = toNum(adSpend);
+        const sales = toNum(adSales);
+        const clicks = toNum(adClicks);
+        const orders = toNum(adOrders);
+        return {
+          spend,
+          sales,
+          clicks,
+          orders,
+          acos: safeDiv(spend, sales),
+          cpc: safeDiv(spend, clicks),
+          cvr: safeDiv(orders, clicks),
+          aov: safeDiv(sales, orders),
+        };
+      }, [adSpend, adSales, adClicks, adOrders]);
+
+      const forecast = useMemo(() => {
+        const cpc = toNum(newCpc);
+        const cvr = toNum(newCvrPct) / 100;
+        const clicks = current.clicks || 0;
+        const estOrders = clicks * cvr;
+        const estSpend = clicks * cpc;
+        const estSales = estOrders * current.aov;
+        const newAcos = safeDiv(estSpend, estSales);
+        const delta = newAcos - current.acos;
+        return { cpc, cvr, clicks, estOrders, estSpend, estSales, newAcos, delta };
+      }, [newCpc, newCvrPct, current]);
+
+      const fmtPct = (v) => (v * 100).toFixed(2) + "%";
+      const fmtMoney = (v) => "$" + v.toFixed(2);
+      const fmtUnit = (v) => Math.round(v).toString();
+
+      const chartData = useMemo(() => {
+        const points = [];
+        const clicks = current.clicks || 0;
+        const aov = current.aov || 0;
+        const cpc = toNum(newCpc);
+        for (let pct = 2; pct <= 30; pct += 2) {
+          const cvr = pct / 100;
+          const orders = clicks * cvr;
+          const spend = clicks * cpc;
+          const sales = orders * aov;
+          const acos = safeDiv(spend, sales) * 100;
+          points.push({ name: pct + "%", value: isFinite(acos) ? acos : 0 });
+        }
+        return points;
+      }, [current, newCpc]);
+
+      return (
+        <div className="min-h-screen flex flex-col">
+          <header className="py-4 border-b border-gray-200 text-center">
+            <h1 className="text-2xl font-bold">ACoS Forecaster</h1>
+          </header>
+          <main className="flex-1 container mx-auto p-4 grid md:grid-cols-3 gap-6">
+            <section>
+              <h2 className="text-lg font-semibold mb-2">Inputs</h2>
+              <InputField label="Ad Spend ($)" value={adSpend} onChange={setAdSpend} />
+              <InputField label="Ad Sales ($)" value={adSales} onChange={setAdSales} />
+              <InputField label="Ad Clicks" value={adClicks} onChange={setAdClicks} />
+              <InputField label="Ad Orders" value={adOrders} onChange={setAdOrders} />
+              <h3 className="text-md font-medium mt-4 mb-2">Forecast Inputs</h3>
+              <InputField label="New CPC ($)" value={newCpc} onChange={setNewCpc} />
+              <InputField label="New CVR (%)" value={newCvrPct} onChange={setNewCvrPct} />
+            </section>
+            <section>
+              <h2 className="text-lg font-semibold mb-2">Current Metrics</h2>
+              <MetricRow label="ACoS" value={fmtPct(current.acos)} highlight={false} />
+              <MetricRow label="Avg CPC" value={fmtMoney(current.cpc)} />
+              <MetricRow label="Ad CVR" value={fmtPct(current.cvr)} />
+              <MetricRow label="AOV" value={fmtMoney(current.aov)} />
+            </section>
+            <section>
+              <h2 className="text-lg font-semibold mb-2">Forecast</h2>
+              <MetricRow label="New ACoS" value={fmtPct(forecast.newAcos)} highlight={true} />
+              <p className="text-sm mt-1 mb-2">
+                Change: {(forecast.delta * 100).toFixed(2)}% (negative means improvement).
+              </p>
+              <div className="grid grid-cols-3 gap-2 text-sm">
+                <MiniKPI label="Est. Spend" value={fmtMoney(forecast.estSpend)} />
+                <MiniKPI label="Est. Orders" value={fmtUnit(forecast.estOrders)} />
+                <MiniKPI label="Est. Sales" value={fmtMoney(forecast.estSales)} />
+              </div>
+            </section>
+          </main>
+          <section className="container mx-auto px-4 pb-8">
+            <h2 className="text-lg font-semibold mb-2">Sensitivity: ACoS vs CVR</h2>
+            <div className="h-64">
+              < width="100%" height="100%">
+                <LineChart data={chartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis tickFormatter={(v) => v.toFixed(0) + '%'} />
+                  <Tooltip formatter={(v) => v.toFixed(2) + '%'} />
+                  <ReferenceLine y={(current.acos || 0) * 100} stroke="#f00" strokeDasharray="3 3" />
+                  <Line type="monotone" dataKey="value" stroke="#007aff" strokeWidth={3} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <p className="mt-2 text-xs text-gray-500">
+              The dotted line shows your current ACoS. Increasing CVR or reducing CPC will lower ACoS.
+            </p>
+          </section>
+          <footer className="border-t border-gray-200 py-4 text-center">
+            Made by Asadul  Connect on{' '}
+            <a
+              href="https://www.linkedin.com/in/muhamadasadullah/"
+              className="text-blue-600 hover:underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              LinkedIn
+            </a>
+          </footer>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
