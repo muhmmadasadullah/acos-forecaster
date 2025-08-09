@@ -1,0 +1,10 @@
+{
+  "files": {
+    "main.js": "/acos-forecaster/static/js/main.0cd013e5.js",
+    "index.html": "/acos-forecaster/index.html",
+    "main.0cd013e5.js.map": "/acos-forecaster/static/js/main.0cd013e5.js.map"
+  },
+  "entrypoints": [
+    "static/js/main.0cd013e5.js"
+  ]
+}
