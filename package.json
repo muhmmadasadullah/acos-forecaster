@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "ACoS forecasting tool built with React.",
   "private": true,
+  "homepage": "https://muhmmadasadullah.github.io/acos-forecaster",
   "main": "src/App.js",
   "scripts": {
     "start": "react-scripts start",
@@ -14,6 +15,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "lucide-react": "^0.284.0",
-    "recharts": "^2.5.0"
+    "recharts": "^2.5.0",
+    "react-scripts": "5.0.1"
   }
 }
