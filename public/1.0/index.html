@@ -32,8 +32,9 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <!-- Babel for in-browser JSX transformation -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Recharts UMD build for charts -->
-    <script src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
+    <!-- Recharts removed: we implement charts in pure SVG so there is no external
+         dependency for charting. Removing this script eliminates the risk of
+         network issues preventing the charts from loading. -->
     <!-- Basic styling for cards and KPI badges -->
     <style>
       /* Accent gradient used in the header badge */
@@ -46,17 +47,9 @@
     <div id="root"></div>
     <script type="text/babel">
       const { useState, useMemo } = React;
-      // Pull Recharts components from the global Recharts object. When Recharts
-      // fails to load, these will be undefined and charts will not render.
-      const {
-        ResponsiveContainer,
-        LineChart,
-        Line,
-        XAxis,
-        YAxis,
-        Tooltip,
-        ReferenceLine,
-      } = window.Recharts || {};
+      // We intentionally avoid external chart libraries in this static build. Charts
+      // are rendered using a lightweight custom SVG component (SimpleLineChart)
+      // defined below. This eliminates reliance on Recharts loading from a CDN.
 
       /**
        * Card component renders a titled section with optional subtitle.
@@ -151,6 +144,104 @@
             </div>
             <div className="text-sm font-semibold">{value}</div>
           </div>
+        );
+      }
+
+      /**
+       * SimpleLineChart renders a basic line chart using SVG. It takes an array
+       * of data points with 'name' and numeric 'acosPct' properties along with
+       * the current ACoS value (0–1). By avoiding an external charting
+       * dependency, this component ensures the chart always displays even when
+       * the network is slow or blocked. The chart scales responsively to the
+       * parent container's width while maintaining a fixed height.
+       */
+      function SimpleLineChart({ data, currentAcos }) {
+        // Chart dimensions. Height is fixed; width is 100% of the container via viewBox.
+        const height = 200;
+        const margin = 40;
+        // Extract y values (percentage) and include current reference value
+        const ys = data.map((p) => p.acosPct);
+        const refValue = (currentAcos || 0) * 100;
+        const yMin = Math.min(...ys, refValue);
+        const yMax = Math.max(...ys, refValue);
+        // Avoid zero range which would break scaling
+        const range = yMax - yMin || 1;
+        // Build the polyline points for the line path. x positions are spread evenly.
+        const points = data.map((p, i) => {
+          const x = i / (data.length - 1);
+          const y = 1 - (p.acosPct - yMin) / range;
+          return `${x},${y}`;
+        });
+        // Compute y coordinate for the reference (current) line
+        const refY = 1 - (refValue - yMin) / range;
+        // Generate tick marks and labels on the y-axis at 4 intervals
+        const tickCount = 4;
+        const ticks = [];
+        for (let i = 0; i <= tickCount; i++) {
+          const t = i / tickCount;
+          const yVal = yMax - (range * t);
+          ticks.push({ position: t, label: `${yVal.toFixed(0)}%` });
+        }
+        return (
+          <svg
+            viewBox={`0 0 1 1`}
+            preserveAspectRatio="none"
+            className="w-full"
+            style={{ height: `${height}px` }}
+          >
+            {/* Horizontal grid lines and y-axis labels */}
+            {ticks.map((tick, idx) => (
+              <g key={idx}>
+                <line
+                  x1={0}
+                  y1={tick.position}
+                  x2={1}
+                  y2={tick.position}
+                  stroke="#e5e7eb"
+                  strokeWidth="0.002"
+                />
+                <text
+                  x={0}
+                  y={tick.position - 0.005}
+                  fontSize="0.03"
+                  fill="#6b7280"
+                  textAnchor="start"
+                >
+                  {tick.label}
+                </text>
+              </g>
+            ))}
+            {/* Reference line for current ACoS */}
+            <line
+              x1={0}
+              y1={refY}
+              x2={1}
+              y2={refY}
+              stroke="#ff4d4f"
+              strokeWidth="0.002"
+              strokeDasharray="0.01 0.01"
+            />
+            {/* Line path connecting data points */}
+            <polyline
+              fill="none"
+              stroke="#007aff"
+              strokeWidth="0.005"
+              points={points.join(' ')}
+            />
+            {/* X-axis labels */}
+            {data.map((p, i) => (
+              <text
+                key={i}
+                x={i / (data.length - 1)}
+                y={1.05}
+                fontSize="0.03"
+                fill="#6b7280"
+                textAnchor="middle"
+              >
+                {p.name}
+              </text>
+            ))}
+          </svg>
         );
       }
 
@@ -339,32 +430,17 @@
                 </Card>
               </section>
 
-              {/* Chart */}
+              {/* Sensitivity chart using SimpleLineChart. By drawing the chart
+                   ourselves, we avoid reliance on third‑party CDN scripts. */}
               <section className="lg:col-span-3">
                 <Card
                   title="Sensitivity: ACoS vs CVR"
                   subtitle="CPC & AOV held at forecast values"
                 >
-                  {window.Recharts ? (
-                    <div className="h-64 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={chartData} margin={{ top: 10, right: 20, bottom: 0, left: 0 }}>
-                          <XAxis dataKey="name" />
-                          <YAxis unit="%" />
-                          <Tooltip formatter={(v) => `${Number(v).toFixed(2)}%`} />
-                          <ReferenceLine y={(current.acos || 0) * 100} strokeDasharray="3 3" stroke="#ff4d4f" />
-                          <Line type="monotone" dataKey="acosPct" strokeWidth={3} stroke="#007aff" dot={false} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  ) : (
-                    <p className="p-4 text-sm text-center text-neutral-500">
-                      Charts couldn’t be loaded. Please check your internet connection and reload.
-                    </p>
-                  )}
+                  <SimpleLineChart data={chartData} currentAcos={current.acos} />
                   <p className="mt-3 text-xs text-neutral-500">
                     Tip: Increasing CVR or lowering CPC will bring ACoS down. The
-                    dotted line marks your current ACoS.
+                    red dashed line marks your current ACoS.
                   </p>
                 </Card>
               </section>
