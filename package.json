@@ -1,0 +1,19 @@
+{
+  "name": "acos-forecaster",
+  "version": "1.0.0",
+  "description": "ACoS forecasting tool built with React.",
+  "private": true,
+  "main": "src/App.js",
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "lucide-react": "^0.284.0",
+    "recharts": "^2.5.0"
+  }
+}
